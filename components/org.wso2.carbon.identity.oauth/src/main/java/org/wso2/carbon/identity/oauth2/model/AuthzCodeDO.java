@@ -34,6 +34,8 @@ public class AuthzCodeDO extends CacheEntry {
 
     private String[] scope;
 
+    private String[] audience;
+
     private Timestamp issuedTime;
 
     private long validityPeriod;
@@ -92,6 +94,15 @@ public class AuthzCodeDO extends CacheEntry {
                 authzCodeId);
         this.pkceCodeChallenge = pkceCodeChallenge;
         this.pkceCodeChallengeMethod = pkceCodeChallengeMethod;
+    }
+
+    public AuthzCodeDO(AuthenticatedUser authorizedUser, String[] scope, String[] audience, Timestamp issuedTime,
+                       long validityPeriod, String callbackUrl, String consumerKey, String authorizationCode,
+                       String authzCodeId, String pkceCodeChallenge, String pkceCodeChallengeMethod) {
+
+        this(authorizedUser, scope, issuedTime, validityPeriod, callbackUrl, consumerKey, authorizationCode,
+                authzCodeId, pkceCodeChallenge, pkceCodeChallengeMethod);
+        this.audience = audience;
     }
 
     public AuthzCodeDO(AuthenticatedUser authorizedUser, String[] scope, Timestamp issuedTime, long validityPeriod,
@@ -196,5 +207,10 @@ public class AuthzCodeDO extends CacheEntry {
     public void setTokenBindingReference(String tokenBindingReference) {
 
         this.tokenBindingReference = tokenBindingReference;
+    }
+
+    public String[] getAudience() {
+
+        return audience;
     }
 }

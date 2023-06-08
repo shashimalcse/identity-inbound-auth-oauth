@@ -35,6 +35,8 @@ public class RefreshTokenValidationDataDO {
 
     private String[] scope;
 
+    private String[] audience;
+
     private String refreshTokenState;
 
     private String grantType;
@@ -72,6 +74,16 @@ public class RefreshTokenValidationDataDO {
 
     public void setScope(String[] scope) {
         this.scope = scope;
+    }
+
+    public String[] getAudience() {
+
+        return audience;
+    }
+
+    public void setAudience(String[] audience) {
+
+        this.audience = audience;
     }
 
     public String getRefreshTokenState() {

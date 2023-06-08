@@ -5,12 +5,20 @@
     <parent>
         <groupId>org.wso2.carbon.identity.inbound.auth.oauth2</groupId>
         <artifactId>identity-inbound-auth-oauth</artifactId>
+<<<<<<< Updated upstream
         <version>6.11.79-SNAPSHOT</version>
+=======
+        <version>6.11.52</version>
+>>>>>>> Stashed changes
         <relativePath>../..</relativePath>
     </parent>
 
     <artifactId>org.wso2.carbon.identity.api.server.dcr</artifactId>
+<<<<<<< Updated upstream
     <version>6.11.79-SNAPSHOT</version>
+=======
+    <version>6.11.52</version>
+>>>>>>> Stashed changes
     <name>WSO2 Carbon -  User DCR Rest API</name>
     <description>WSO2 Carbon - User DCR Rest API</description>
 

@@ -63,6 +63,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.TokenBindings.NONE;
+import static org.wso2.carbon.identity.oauth2.Oauth2ScopeConstants.INTERNAL_SCOPE_PREFIX;
 import static org.wso2.carbon.identity.oauth2.util.OAuth2Util.buildCacheKeyStringForTokenWithUserId;
 
 /**
@@ -145,6 +146,14 @@ public class RefreshGrantHandler extends AbstractAuthorizationGrantHandler {
         String[] requestedScopes = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getScope();
         String[] grantedScopes = tokReqMsgCtx.getScope();
         String[] grantedInternalScopes = tokReqMsgCtx.getAuthorizedInternalScopes();
+
+        if (!super.validateScope(tokReqMsgCtx)) {
+            return false;
+        }
+
+        String[] allowedScopes = tokReqMsgCtx.getScope();
+        List<String> allowedScopeList = Arrays.asList(allowedScopes);
+
         if (ArrayUtils.isNotEmpty(requestedScopes)) {
             if (ArrayUtils.isEmpty(grantedScopes) && ArrayUtils.isEmpty(grantedInternalScopes)) {
                 return false;
@@ -155,6 +164,7 @@ public class RefreshGrantHandler extends AbstractAuthorizationGrantHandler {
             if (ArrayUtils.isEmpty(grantedInternalScopes)) {
                 grantedInternalScopes = new String[0];
             }
+
             List<String> grantedScopeList = Stream.concat(Arrays.stream(grantedScopes),
                     Arrays.stream(grantedInternalScopes)).collect(Collectors.toList());
             for (String scope : requestedScopes) {
@@ -164,10 +174,26 @@ public class RefreshGrantHandler extends AbstractAuthorizationGrantHandler {
                     }
                     return false;
                 }
+                if (!isInternalScopes(scope)) {
+                    if (!allowedScopeList.contains(scope)) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("scope: " + scope + "is not granted for this refresh token");
+                        }
+                        return false;
+                    }
+                }
             }
             tokReqMsgCtx.setScope(requestedScopes);
         }
         return true;
+    }
+
+    private boolean isInternalScopes(String scope) {
+
+        if (scope.startsWith(INTERNAL_SCOPE_PREFIX)) {
+            return true;
+        }
+        return false;
     }
 
     private void setPropertiesForTokenGeneration(OAuthTokenReqMessageContext tokReqMsgCtx,
@@ -176,6 +202,7 @@ public class RefreshGrantHandler extends AbstractAuthorizationGrantHandler {
 
         tokReqMsgCtx.setAuthorizedUser(validationBean.getAuthorizedUser());
         tokReqMsgCtx.setScope(validationBean.getScope());
+        tokReqMsgCtx.setAudience(validationBean.getAudience());
         tokReqMsgCtx.getOauth2AccessTokenReqDTO().setAccessTokenExtendedAttributes(
                 validationBean.getAccessTokenExtendedAttributes());
         if (StringUtils.isNotBlank(validationBean.getTokenBindingReference()) && !NONE

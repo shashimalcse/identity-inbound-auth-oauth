@@ -151,7 +151,6 @@ public class OAuth2AccessTokenRespDTO {
     public void setAuthorizedScopes(String authorizedScopes) {
         this.authorizedScopes = authorizedScopes;
     }
-
     public String getTokenId() {
         return tokenId;
     }

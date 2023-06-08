@@ -497,6 +497,9 @@ public class JWTTokenIssuer extends OauthTokenIssuerImpl {
         // This is a spec (openid-connect-core-1_0:2.0) requirement for ID tokens. But we are keeping this in JWT
         // as well.
         List<String> audience = OAuth2Util.getOIDCAudience(consumerKey, oAuthAppDO);
+        if (ArrayUtils.isNotEmpty(tokenReqMessageContext.getAudience())) {
+            audience.addAll(Arrays.asList(tokenReqMessageContext.getAudience()));
+        }
         jwtClaimsSetBuilder.audience(audience);
         JWTClaimsSet jwtClaimsSet;
 

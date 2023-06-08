@@ -33,6 +33,7 @@ public class OAuthAuthzReqMessageContext implements Serializable {
     // it contains cookies and request headers.
     private transient OAuth2AuthorizeReqDTO authorizationReqDTO;
     private String[] approvedScope;
+    private String[] audience;
     private String[] requestedScopes;
     private long validityPeriod;
 
@@ -75,6 +76,16 @@ public class OAuthAuthzReqMessageContext implements Serializable {
     public void setApprovedScope(String[] approvedScope) {
 
         this.approvedScope = approvedScope;
+    }
+
+    public String[] getAudience() {
+
+        return audience;
+    }
+
+    public void setAudience(String[] audience) {
+
+        this.audience = audience;
     }
 
     /**

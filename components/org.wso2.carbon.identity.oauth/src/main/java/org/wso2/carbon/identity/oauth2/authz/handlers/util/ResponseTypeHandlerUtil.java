@@ -274,8 +274,8 @@ public class ResponseTypeHandlerUtil {
             throw new IdentityOAuth2Exception(e.getMessage(), e);
         }
 
-        AuthzCodeDO authzCodeDO = new AuthzCodeDO(authorizationReqDTO.getUser(),
-                oauthAuthzMsgCtx.getApprovedScope(), timestamp, validityPeriod, authorizationReqDTO.getCallbackUrl(),
+        AuthzCodeDO authzCodeDO = new AuthzCodeDO(authorizationReqDTO.getUser(), oauthAuthzMsgCtx.getApprovedScope(),
+                oauthAuthzMsgCtx.getAudience(), timestamp, validityPeriod, authorizationReqDTO.getCallbackUrl(),
                 authorizationReqDTO.getConsumerKey(), authorizationCode, codeId,
                 authorizationReqDTO.getPkceCodeChallenge(), authorizationReqDTO.getPkceCodeChallengeMethod());
 

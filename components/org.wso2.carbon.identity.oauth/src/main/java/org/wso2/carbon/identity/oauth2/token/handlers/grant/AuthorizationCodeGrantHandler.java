@@ -107,6 +107,7 @@ public class AuthorizationCodeGrantHandler extends AbstractAuthorizationGrantHan
                                                  OAuth2AccessTokenReqDTO tokenReq, AuthzCodeDO authzCodeBean) {
         tokReqMsgCtx.setAuthorizedUser(authzCodeBean.getAuthorizedUser());
         tokReqMsgCtx.setScope(authzCodeBean.getScope());
+        tokReqMsgCtx.setAudience(authzCodeBean.getAudience());
         // keep the pre processed authz code as a OAuthTokenReqMessageContext property to avoid
         // calculating it again when issuing the access token.
         tokReqMsgCtx.addProperty(AUTHZ_CODE, tokenReq.getAuthorizationCode());
