@@ -40,6 +40,7 @@ import org.wso2.carbon.identity.base.IdentityConstants;
 import org.wso2.carbon.identity.base.IdentityException;
 import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataHandler;
 import org.wso2.carbon.identity.claim.metadata.mgt.exception.ClaimMetadataException;
+import org.wso2.carbon.identity.claim.metadata.mgt.model.ExternalClaim;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.oauth.cache.AuthorizationGrantCache;
@@ -80,6 +81,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static org.apache.commons.collections.MapUtils.isEmpty;
 import static org.apache.commons.collections.MapUtils.isNotEmpty;
@@ -265,8 +267,13 @@ public class DefaultOIDCClaimsCallbackHandler implements CustomClaimsCallbackHan
         }
 
         // Restrict the claims based on user consent given
-        return getUserConsentedClaims(filteredUserClaimsByOIDCScopes, authenticatedUser, grantType, clientId,
-                spTenantDomain, isConsentedToken);
+        Map<String, Object> userConsentedClaims =  getUserConsentedClaims(filteredUserClaimsByOIDCScopes,
+                authenticatedUser, grantType, clientId, spTenantDomain, isConsentedToken);
+        if (accessToken == null) {
+            // If the access token is not available, filter the claims based on claim's access token configurations.
+            return getAccessTokenFilteredClaims(userConsentedClaims, clientId, spTenantDomain);
+        }
+        return userConsentedClaims;
     }
 
     private boolean isPreserverClaimUrisInAssertion(OAuthTokenReqMessageContext requestMsgCtx) {
@@ -307,6 +314,58 @@ public class DefaultOIDCClaimsCallbackHandler implements CustomClaimsCallbackHan
 
         return OIDCClaimUtil.filterUserClaimsBasedOnConsent(userClaims, authenticatedUser, clientId,
                 spTenantDomain, grantType, serviceProvider, isConsentedToken);
+    }
+
+    /**
+     * Filter user claims based on add to access token value of the claim mapping.
+     *
+     * @param userClaims                  Map of user claims
+     * @param clientId                    Client Id
+     * @param spTenantDomain              Tenant domain of the service provider
+     * @return
+     */
+    private Map<String, Object> getAccessTokenFilteredClaims(Map<String, Object> userClaims, String clientId,
+                                                       String spTenantDomain) throws OAuthSystemException {
+
+        ServiceProvider serviceProvider;
+        try {
+            serviceProvider = getServiceProvider(spTenantDomain, clientId);
+        } catch (IdentityApplicationManagementException e) {
+            throw new OAuthSystemException(
+                    "Error while obtaining service provider for tenant domain: " + spTenantDomain + " client id: "
+                            + clientId, e);
+        }
+        Map<String, String> oidcClaimURIs = getOIDCClaimURIs(spTenantDomain);
+        for (ClaimMapping claimMapping : serviceProvider.getClaimConfig().getClaimMappings()) {
+            if (!claimMapping.getAddToAccessToken()) {
+                userClaims.remove(oidcClaimURIs.get(claimMapping.getLocalClaim().getClaimUri()));
+            }
+        }
+        return userClaims;
+    }
+
+    /**
+     * Get OIDC claim URIs.
+     *
+     * @param tenantDomain       Tenant domain
+     * @return
+     */
+    private Map<String, String> getOIDCClaimURIs(String tenantDomain) {
+
+        try {
+            List<ExternalClaim> externalClaims = OpenIDConnectServiceComponentHolder.getInstance()
+                    .getClaimMetadataManagementService()
+                    .getExternalClaims(OIDC_DIALECT, tenantDomain);
+            return externalClaims.stream().collect(Collectors.toMap(ExternalClaim::getMappedLocalClaim,
+                    ExternalClaim::getClaimURI));
+        } catch (ClaimMetadataException e) {
+            String msg = "Error while getting OIDC claims in tenantDomain: "
+                    + tenantDomain;
+            if (log.isDebugEnabled()) {
+                log.debug(msg, e);
+            }
+        }
+        return new HashMap<>();
     }
 
     /**
