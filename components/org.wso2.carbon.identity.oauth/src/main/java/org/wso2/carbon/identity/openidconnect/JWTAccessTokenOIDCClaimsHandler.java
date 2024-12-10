@@ -23,12 +23,13 @@ import net.minidev.json.JSONArray;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.wso2.carbon.base.MultitenantConstants;
+import org.apache.oltu.oauth2.common.exception.OAuthSystemException;
+import org.wso2.carbon.CarbonConstants;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkUtils;
 import org.wso2.carbon.identity.application.common.IdentityApplicationManagementException;
+import org.wso2.carbon.identity.application.common.model.ClaimMapping;
 import org.wso2.carbon.identity.application.common.model.ServiceProvider;
-import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
 import org.wso2.carbon.identity.base.IdentityException;
 import org.wso2.carbon.identity.claim.metadata.mgt.ClaimMetadataHandler;
 import org.wso2.carbon.identity.claim.metadata.mgt.exception.ClaimMetadataException;
@@ -39,8 +40,8 @@ import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.authz.OAuthAuthzReqMessageContext;
 import org.wso2.carbon.identity.oauth2.dao.OAuthTokenPersistenceFactory;
-import org.wso2.carbon.identity.oauth2.internal.OAuth2ServiceComponentHolder;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
+import org.wso2.carbon.identity.oauth2.util.AuthzUtil;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.identity.openidconnect.internal.OpenIDConnectServiceComponentHolder;
 import org.wso2.carbon.identity.organization.management.service.exception.OrganizationManagementException;
@@ -55,6 +56,7 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static org.apache.commons.collections.MapUtils.isEmpty;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.OIDCClaims.ADDRESS;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.OIDCClaims.GROUPS;
 
@@ -71,16 +73,16 @@ public class JWTAccessTokenOIDCClaimsHandler implements CustomClaimsCallbackHand
     public JWTClaimsSet handleCustomClaims(JWTClaimsSet.Builder builder, OAuthTokenReqMessageContext request)
             throws IdentityOAuth2Exception {
 
-        String clientId = request.getOauth2AccessTokenReqDTO().getClientId();
-        String spTenantDomain = getServiceProviderTenantDomain(request);
-        AuthenticatedUser authenticatedUser = request.getAuthorizedUser();
-
-        Map<String, Object> claims = getAccessTokenUserClaims(authenticatedUser, clientId, spTenantDomain);
+        Map<String, Object> claims;
+        try {
+            claims = getUserClaimsInOIDCDialect(request);
+        } catch (OAuthSystemException e) {
+            throw new IdentityOAuth2Exception("Error occurred while getting user claims for the access token.", e);
+        }
         if (claims == null || claims.isEmpty()) {
             return builder.build();
         }
-        Map<String, Object> filteredClaims = handleClaimsFormat(claims, clientId, spTenantDomain);
-        return setClaimsToJwtClaimSet(builder, filteredClaims);
+        return setClaimsToJwtClaimSet(builder, claims);
     }
 
     @Override
@@ -91,22 +93,169 @@ public class JWTAccessTokenOIDCClaimsHandler implements CustomClaimsCallbackHand
           Handling the user attributes for the access token. There is no requirement of the consent
           to manage user attributes for the access token.
          */
-        String clientId = request.getAuthorizationReqDTO().getConsumerKey();
-        String spTenantDomain = getServiceProviderTenantDomain(request);
-        AuthenticatedUser authenticatedUser = request.getAuthorizationReqDTO().getUser();
-
-        Map<String, Object> claims = getAccessTokenUserClaims(authenticatedUser, clientId, spTenantDomain);
-        if (claims == null || claims.isEmpty()) {
-            return builder.build();
-        }
-        Map<String, Object> filteredClaims = handleClaimsFormat(claims, clientId, spTenantDomain);
-        return setClaimsToJwtClaimSet(builder, filteredClaims);
+        Map<String, Object> claims = getUserClaimsInOIDCDialect(request);
+        return setClaimsToJwtClaimSet(builder, claims);
     }
 
-    private Map<String, Object> getAccessTokenUserClaims(AuthenticatedUser authenticatedUser, String clientId,
-                                                           String spTenantDomain)
+    /**
+     * Get response map.
+     *
+     * @param requestMsgCtx Token request message context
+     * @return Mapped claimed
+     * @throws OAuthSystemException
+     */
+    private Map<String, Object> getUserClaimsInOIDCDialect(OAuthTokenReqMessageContext requestMsgCtx)
+            throws OAuthSystemException, IdentityOAuth2Exception {
+        // Map<"email", "peter@example.com">
+        Map<String, Object> userClaimsInOIDCDialect;
+        // Get any user attributes that were cached against the access token
+        // Map<(http://wso2.org/claims/email, email), "peter@example.com">
+        Map<ClaimMapping, String> userAttributes = OIDCClaimUtil.getCachedUserAttributes(requestMsgCtx);
+        if ((userAttributes.isEmpty() || OIDCClaimUtil.isOrganizationSwitchGrantType(requestMsgCtx))
+                && (OIDCClaimUtil.isLocalUser(requestMsgCtx.getAuthorizedUser())
+                || OIDCClaimUtil.isOrganizationSsoUserSwitchingOrganization(requestMsgCtx.getAuthorizedUser()))) {
+            if (log.isDebugEnabled()) {
+                log.debug("User attributes not found in cache against the access token or authorization code. " +
+                        "Retrieving claims for local user: " + requestMsgCtx.getAuthorizedUser() + " from userstore.");
+            }
+            if (!StringUtils.equals(requestMsgCtx.getAuthorizedUser().getUserResidentOrganization(),
+                    requestMsgCtx.getAuthorizedUser().getAccessingOrganization()) &&
+                    !CarbonConstants.ENABLE_LEGACY_AUTHZ_RUNTIME &&
+                    StringUtils.isNotEmpty(AuthzUtil.getUserIdOfAssociatedUser(requestMsgCtx.getAuthorizedUser()))) {
+                requestMsgCtx.getAuthorizedUser().setSharedUserId(AuthzUtil.getUserIdOfAssociatedUser(requestMsgCtx
+                        .getAuthorizedUser()));
+                requestMsgCtx.getAuthorizedUser().setUserSharedOrganizationId(requestMsgCtx.getAuthorizedUser()
+                        .getAccessingOrganization());
+            }
+            // Get claim in oidc dialect from user store.
+            userClaimsInOIDCDialect = retrieveClaimsForLocalUser(requestMsgCtx);
+        } else {
+            // Get claim map from the cached attributes
+            userClaimsInOIDCDialect = OIDCClaimUtil.getOIDCClaimsFromUserAttributes(userAttributes, requestMsgCtx);
+
+        }
+
+        Object hasNonOIDCClaimsProperty = requestMsgCtx.getProperty(OIDCConstants.HAS_NON_OIDC_CLAIMS);
+        if (OIDCClaimUtil.isPreserverClaimUrisInAssertion(requestMsgCtx) || (hasNonOIDCClaimsProperty != null
+                && (Boolean) hasNonOIDCClaimsProperty)) {
+            return userClaimsInOIDCDialect;
+        } else {
+            String spTenantDomain = OIDCClaimUtil.getServiceProviderTenantDomain(requestMsgCtx);
+            String clientId = requestMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
+            return filterClaims(userClaimsInOIDCDialect, clientId, spTenantDomain);
+        }
+    }
+
+    private Map<String, Object> getUserClaimsInOIDCDialect(OAuthAuthzReqMessageContext authzReqMessageContext)
             throws IdentityOAuth2Exception {
 
+        Map<String, Object> userClaimsInOIDCDialect;
+        Map<ClaimMapping, String> userAttributes =
+                OIDCClaimUtil.getUserAttributesCachedAgainstToken(OIDCClaimUtil.getAccessToken(authzReqMessageContext));
+
+        if (isEmpty(userAttributes)) {
+            if (OIDCClaimUtil.isLocalUser(authzReqMessageContext)) {
+                if (log.isDebugEnabled()) {
+                    log.debug("User attributes not found in cache. Trying to retrieve attribute from auth " +
+                            "context for local user: " + authzReqMessageContext.getAuthorizationReqDTO().getUser());
+                }
+                userAttributes = authzReqMessageContext.getAuthorizationReqDTO().getUser()
+                        .getUserAttributes();
+                if (isEmpty(userAttributes)) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("User attributes not found in auth context. Trying to retrieve attribute for " +
+                                "local user: " + authzReqMessageContext.getAuthorizationReqDTO().getUser());
+                    }
+                    userClaimsInOIDCDialect = retrieveClaimsForLocalUser(authzReqMessageContext);
+                } else {
+                    userClaimsInOIDCDialect = OIDCClaimUtil.getOIDCClaimMapFromUserAttributes(userAttributes);
+                }
+            } else {
+                if (log.isDebugEnabled()) {
+                    log.debug("User attributes not found in cache. Trying to retrieve attribute for federated " +
+                            "user: " + authzReqMessageContext.getAuthorizationReqDTO().getUser());
+                }
+                userClaimsInOIDCDialect = OIDCClaimUtil.retrieveClaimsForFederatedUser(authzReqMessageContext);
+            }
+        } else {
+            userClaimsInOIDCDialect = OIDCClaimUtil.getOIDCClaimMapFromUserAttributes(userAttributes);
+        }
+
+        String spTenantDomain = OIDCClaimUtil.getServiceProviderTenantDomain(authzReqMessageContext);
+        String clientId = authzReqMessageContext.getAuthorizationReqDTO().getConsumerKey();
+        return filterClaims(userClaimsInOIDCDialect, clientId, spTenantDomain);
+    }
+
+    private Map<String, Object> filterClaims(Map<String, Object> userClaimsInOIDCDialect, String clientId,
+                                              String spTenantDomain) throws IdentityOAuth2Exception {
+
+        // Get allowed access token claims.
+        List<String> allowedClaims = getAccessTokenClaims(clientId, spTenantDomain);
+        if (allowedClaims.isEmpty()) {
+            return new HashMap<>();
+        }
+        Map<String, Object> claims = allowedClaims.stream()
+                .filter(userClaimsInOIDCDialect::containsKey)
+                .collect(Collectors.toMap(claim -> claim, userClaimsInOIDCDialect::get));
+        return handleClaimsFormat(claims, clientId, spTenantDomain);
+    }
+
+    private Map<String, Object> retrieveClaimsForLocalUser(OAuthAuthzReqMessageContext authzReqMessageContext)
+            throws IdentityOAuth2Exception {
+
+        try {
+            String spTenantDomain = OIDCClaimUtil.getServiceProviderTenantDomain(authzReqMessageContext);
+            String clientId = authzReqMessageContext.getAuthorizationReqDTO().getConsumerKey();
+            AuthenticatedUser authenticatedUser = authzReqMessageContext.getAuthorizationReqDTO().getUser();
+
+            return getUserClaimsInOIDCDialect(spTenantDomain, clientId, authenticatedUser);
+        } catch (UserStoreException | IdentityApplicationManagementException | IdentityException |
+                 OrganizationManagementException e) {
+            if (FrameworkUtils.isContinueOnClaimHandlingErrorAllowed()) {
+                log.error("Error occurred while getting claims for user " +
+                        authzReqMessageContext.getAuthorizationReqDTO().getUser(), e);
+            } else {
+                throw new IdentityOAuth2Exception("Error occurred while getting claims for user " +
+                        authzReqMessageContext.getAuthorizationReqDTO().getUser(), e);
+            }
+        }
+        return new HashMap<>();
+    }
+
+    private Map<String, Object> retrieveClaimsForLocalUser(OAuthTokenReqMessageContext requestMsgCtx)
+            throws IdentityOAuth2Exception {
+
+        try {
+            String spTenantDomain = OIDCClaimUtil.getServiceProviderTenantDomain(requestMsgCtx);
+            String clientId = requestMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
+            AuthenticatedUser authenticatedUser = requestMsgCtx.getAuthorizedUser();
+
+            return getUserClaimsInOIDCDialect(spTenantDomain, clientId, authenticatedUser);
+        } catch (UserStoreException | IdentityApplicationManagementException | IdentityException |
+                 OrganizationManagementException e) {
+            if (FrameworkUtils.isContinueOnClaimHandlingErrorAllowed()) {
+                log.error("Error occurred while getting claims for user: " + requestMsgCtx.getAuthorizedUser() +
+                        " from userstore.", e);
+            } else {
+                throw new IdentityOAuth2Exception("Error occurred while getting claims for user: " +
+                        requestMsgCtx.getAuthorizedUser() + " from userstore.", e);
+            }
+        }
+        return new HashMap<>();
+    }
+
+    private Map<String, Object> getUserClaimsInOIDCDialect(String spTenantDomain, String clientId,
+                                                           AuthenticatedUser authenticatedUser)
+            throws IdentityApplicationManagementException, IdentityException, UserStoreException,
+            OrganizationManagementException {
+
+        Map<String, Object> userClaimsMappedToOIDCDialect = new HashMap<>();
+        ServiceProvider serviceProvider = OIDCClaimUtil.getServiceProvider(spTenantDomain, clientId);
+        if (serviceProvider == null) {
+            log.warn("Unable to find a service provider associated with client_id: " + clientId + " in tenantDomain: " +
+                    spTenantDomain + ". Returning empty claim map for user.");
+            return userClaimsMappedToOIDCDialect;
+        }
         // Get allowed access token claims.
         List<String> allowedClaims = getAccessTokenClaims(clientId, spTenantDomain);
         if (allowedClaims.isEmpty()) {
@@ -120,45 +269,10 @@ public class JWTAccessTokenOIDCClaimsHandler implements CustomClaimsCallbackHand
         }
         List<String> localClaimURIs = allowedClaims.stream().map(oidcToLocalClaimMappings::get).filter(Objects::nonNull)
                 .collect(Collectors.toList());
-        try {
-            return getUserClaimsFromUserStore(authenticatedUser, clientId, spTenantDomain, localClaimURIs);
-        } catch (UserStoreException | IdentityApplicationManagementException | IdentityException |
-                 OrganizationManagementException e) {
-            if (FrameworkUtils.isContinueOnClaimHandlingErrorAllowed()) {
-                log.error("Error occurred while getting claims for user: " + authenticatedUser +
-                        " from userstore.", e);
-            } else {
-                throw new IdentityOAuth2Exception("Error occurred while getting claims for user: " +
-                        authenticatedUser + " from userstore.", e);
-            }
-        }
-        return null;
+        // Improve runtime claim value storage in cache through https://github.com/wso2/product-is/issues/15056
+        localClaimURIs.removeIf(claim -> claim.startsWith("http://wso2.org/claims/runtime/"));
+        return OIDCClaimUtil.getUserClaimsInOIDCDialect(serviceProvider, authenticatedUser, localClaimURIs);
     }
-
-    /**
-     * This method retrieves user claims from the user store.
-     *
-     * @param authenticatedUser Authenticated user.
-     * @param clientId Client Id.
-     * @param spTenantDomain SP tenant domain.
-     * @param claimURIList List of claim URIs.
-     * @return Map of user claims.
-     */
-    private Map<String, Object> getUserClaimsFromUserStore(AuthenticatedUser authenticatedUser, String clientId,
-                                                           String spTenantDomain, List<String> claimURIList)
-            throws IdentityApplicationManagementException, UserStoreException, OrganizationManagementException,
-            IdentityException {
-
-        Map<String, Object> userClaimsMappedToOIDCDialect = new HashMap<>();
-        ServiceProvider serviceProvider = getServiceProvider(spTenantDomain, clientId);
-        if (serviceProvider == null) {
-            log.warn("Unable to find a service provider associated with client_id: " + clientId + " in tenantDomain: " +
-                    spTenantDomain + ". Returning empty claim map for user.");
-            return userClaimsMappedToOIDCDialect;
-        }
-        return OIDCClaimUtil.getUserClaimsInOIDCDialect(serviceProvider, authenticatedUser, claimURIList);
-    }
-
 
     /**
      * This method retrieves OIDC to Local claim mappings.
@@ -273,58 +387,4 @@ public class JWTAccessTokenOIDCClaimsHandler implements CustomClaimsCallbackHand
                 .getClaimsFilteredByOIDCScopes(userClaims, registeredScopes.toArray(new String[0]),
                         clientId, tenantDomain);
     }
-
-    /**
-     * Get service provider.
-     *
-     * @param spTenantDomain Tenant Domain.
-     * @param clientId       Client Id.
-     * @return ServiceProvider.
-     * @throws IdentityApplicationManagementException IdentityApplicationManagementException.
-     */
-    private ServiceProvider getServiceProvider(String spTenantDomain,
-                                               String clientId) throws IdentityApplicationManagementException {
-
-        ApplicationManagementService applicationMgtService = OAuth2ServiceComponentHolder.getApplicationMgtService();
-        String spName = applicationMgtService.getServiceProviderNameByClientId(clientId, OAUTH2, spTenantDomain);
-
-        if (log.isDebugEnabled()) {
-            log.debug("Retrieving service provider for clientId: " + clientId + " in tenantDomain: " + spTenantDomain);
-        }
-        return applicationMgtService.getApplicationExcludingFileBasedSPs(spName, spTenantDomain);
-    }
-
-
-    /**
-     * Get the tenant domain of the service provider.
-     *
-     * @param requestMsgCtx OAuthTokenReqMessageContext.
-     * @return Tenant domain of the service provider.
-     */
-    private String getServiceProviderTenantDomain(OAuthTokenReqMessageContext requestMsgCtx) {
-
-        String spTenantDomain = (String) requestMsgCtx.getProperty(MultitenantConstants.TENANT_DOMAIN);
-        // There are certain flows where tenant domain is not added as a message context property.
-        if (spTenantDomain == null) {
-            spTenantDomain = requestMsgCtx.getOauth2AccessTokenReqDTO().getTenantDomain();
-        }
-        return spTenantDomain;
-    }
-
-    /**
-     * Retrieves the service provider tenant domain from the OAuthAuthzReqMessageContext.
-     *
-     * @param requestMsgCtx OAuthAuthzReqMessageContext containing the tenant domain.
-     * @return The tenant domain.
-     */
-    private String getServiceProviderTenantDomain(OAuthAuthzReqMessageContext requestMsgCtx) {
-
-        String spTenantDomain = (String) requestMsgCtx.getProperty(MultitenantConstants.TENANT_DOMAIN);
-        // There are certain flows where tenant domain is not added as a message context property.
-        if (spTenantDomain == null) {
-            spTenantDomain = requestMsgCtx.getAuthorizationReqDTO().getTenantDomain();
-        }
-        return spTenantDomain;
-    }
-
 }
