@@ -26,6 +26,8 @@ import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Deactivate;
 import org.wso2.carbon.identity.oauth.ciba.api.CibaAuthService;
 import org.wso2.carbon.identity.oauth.ciba.api.CibaAuthServiceImpl;
+import org.wso2.carbon.identity.oauth.ciba.handlers.CibaResponseTypeRequestValidator;
+import org.wso2.carbon.identity.oauth2.authz.validators.ResponseTypeRequestValidator;
 
 /**
  * Service component for CIBA.
@@ -44,6 +46,8 @@ public class CibaServiceComponent {
         try {
             context.getBundleContext().registerService(CibaAuthService.class.getName(),
                     new CibaAuthServiceImpl(), null);
+            context.getBundleContext().registerService(ResponseTypeRequestValidator.class.getName(),
+                    new CibaResponseTypeRequestValidator(), null);
             if (log.isDebugEnabled()) {
                 log.debug("CIBA component bundle is activated.");
             }
