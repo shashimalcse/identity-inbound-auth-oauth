@@ -18,6 +18,7 @@
 
 package org.wso2.carbon.identity.oauth.ciba.api;
 
+import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.oauth.ciba.exceptions.CibaClientException;
 import org.wso2.carbon.identity.oauth.ciba.exceptions.CibaCoreException;
 import org.wso2.carbon.identity.oauth.ciba.model.CibaAuthCodeRequest;
@@ -38,4 +39,9 @@ public interface CibaAuthService {
      */
     CibaAuthCodeResponse generateAuthCodeResponse(CibaAuthCodeRequest cibaAuthCodeRequest) throws CibaCoreException,
             CibaClientException;
+
+    default void triggerNotification(String authCodeKey, String bindingMessage, AuthenticatedUser authenticatedUser)
+            throws CibaCoreException {
+
+    }
 }

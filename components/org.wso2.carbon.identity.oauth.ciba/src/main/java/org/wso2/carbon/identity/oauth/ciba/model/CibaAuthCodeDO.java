@@ -38,8 +38,6 @@ public class CibaAuthCodeDO {
     private Enum authReqStatus;
     private String[] scopes;
     private AuthenticatedUser authenticatedUser;
-    private String loginHint;
-    private String bindingMessage;
 
     public String getCibaAuthCodeKey() {
 
@@ -141,25 +139,5 @@ public class CibaAuthCodeDO {
     public void setAuthenticatedUser(AuthenticatedUser authenticatedUser) {
 
         this.authenticatedUser = authenticatedUser;
-    }
-
-    public String getLoginHint() {
-
-        return loginHint;
-    }
-
-    public void setLoginHint(String loginHint) {
-
-        this.loginHint = loginHint;
-    }
-
-    public String getBindingMessage() {
-
-        return bindingMessage;
-    }
-
-    public void setBindingMessage(String bindingMessage) {
-
-        this.bindingMessage = bindingMessage;
     }
 }

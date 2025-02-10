@@ -45,6 +45,9 @@ public class CibaConstants {
     public static final String TRANSACTION_CONTEXT = "transaction_context";
     public static final String UTC = "UTC";
     public static final String EXPIRES_IN = "expires_in";
+    public static final String CIBA_USER_AUTH_ENDPOINT_PATH = "/oauth2/ciba_auth";
+    public static final String CIBA_MAIL_TEMPLATE_NAME = "CIBAEmail";
+    public static final String CIBA_MAIL_LINK = "CIBALink";
 
     private CibaConstants() {
 

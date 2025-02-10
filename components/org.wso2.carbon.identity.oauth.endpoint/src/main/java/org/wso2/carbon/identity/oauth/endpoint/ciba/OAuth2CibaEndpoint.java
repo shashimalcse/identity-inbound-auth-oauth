@@ -22,6 +22,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.cxf.interceptor.InInterceptors;
 import org.apache.oltu.oauth2.common.error.OAuthError;
+import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.oauth.ciba.common.CibaConstants;
 import org.wso2.carbon.identity.oauth.ciba.exceptions.CibaClientException;
 import org.wso2.carbon.identity.oauth.ciba.exceptions.CibaCoreException;
@@ -115,8 +116,11 @@ public class OAuth2CibaEndpoint {
             // Obtain Response from service layer of CIBA.
             cibaAuthCodeResponse = getCibaAuthCodeResponse(cibaAuthCodeRequest);
 
-            // Create an internal authorize call to the authorize endpoint.
-            generateAuthorizeCall(request, response, cibaAuthCodeResponse);
+
+//            // Create an internal authorize call to the authorize endpoint.
+//            generateAuthorizeCall(request, response, cibaAuthCodeResponse);
+            CibaAuthServiceFactory.getCibaAuthService().triggerNotification(cibaAuthCodeResponse.getAuthCodeKey(),
+                    cibaAuthCodeResponse.getBindingMessage(), getAuthenticatedUser(cibaAuthCodeResponse));
 
             // Create and return Ciba Authentication Response.
             return getAuthResponse(response, cibaAuthCodeResponse);
@@ -124,7 +128,15 @@ public class OAuth2CibaEndpoint {
         } catch (CibaAuthFailureException e) {
             // Returning error response.
             return getErrorResponse(e);
+        } catch (CibaCoreException e) {
+            log.error("Error while generating authentication response.", e);
+            return getErrorResponse(new CibaAuthFailureException(OAuth2ErrorCodes.SERVER_ERROR, e.getMessage(), e));
         }
+    }
+
+    public AuthenticatedUser getAuthenticatedUser(CibaAuthCodeResponse cibaAuthCodeResponse) {
+
+        return AuthenticatedUser.createLocalAuthenticatedUserFromSubjectIdentifier(cibaAuthCodeResponse.getUserHint());
     }
 
     /**

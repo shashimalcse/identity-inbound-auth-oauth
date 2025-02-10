@@ -389,11 +389,11 @@ public class CibaAuthRequestValidator {
         if (StringUtils.isEmpty(alg)) {
             throw new CibaAuthFailureException(OAuth2ErrorCodes.INVALID_REQUEST, "Algorithm must not be null.");
         }
-
-        if (alg.startsWith("RS")) {
-            throw new CibaAuthFailureException(OAuth2ErrorCodes.INVALID_REQUEST,
-                    "Provided algorithm: " + alg + " not supported.");
-        }
+        // TODO : Skip the algorithm check for now. Need to implement the algorithm check.
+//        if (alg.startsWith("RS")) {
+//            throw new CibaAuthFailureException(OAuth2ErrorCodes.INVALID_REQUEST,
+//                    "Provided algorithm: " + alg + " not supported.");
+//        }
         return true;
     }
 

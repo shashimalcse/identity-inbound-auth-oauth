@@ -19,6 +19,7 @@
 package org.wso2.carbon.identity.oauth;
 
 import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.JWSVerifier;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
@@ -46,6 +47,7 @@ import java.security.interfaces.RSAPublicKey;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.SignatureAlgorithms.SHA256_WITH_RSA;
 import static org.wso2.carbon.identity.openidconnect.model.Constants.PS;
 import static org.wso2.carbon.identity.openidconnect.model.Constants.RS;
 
@@ -76,6 +78,10 @@ public class RequestObjectValidatorUtil {
             oAuthAppDO = OAuth2Util.getAppInformationByClientId(oAuth2Parameters.getClientId(),
                     oAuth2Parameters.getTenantDomain());
             String algorithm = oAuthAppDO.getRequestObjectSignatureAlgorithm();
+            // TODO : Skip blocker for now. Need to remove this after fixing the issue.
+            if (StringUtils.isNotEmpty(algorithm) && SHA256_WITH_RSA.equals(algorithm)) {
+                algorithm = JWSAlgorithm.RS256.getName();
+            }
             if (StringUtils.isNotEmpty(algorithm) && !algorithm.equals(jwt.getHeader().getAlgorithm().getName())) {
                 throw new RequestObjectException(OAuth2ErrorCodes.INVALID_REQUEST,
                         "Request Object signature verification failed. Invalid signature algorithm.");

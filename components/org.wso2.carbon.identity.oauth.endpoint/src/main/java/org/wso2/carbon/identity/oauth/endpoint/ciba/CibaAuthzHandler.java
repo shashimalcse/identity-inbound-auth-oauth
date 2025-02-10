@@ -21,6 +21,7 @@ package org.wso2.carbon.identity.oauth.endpoint.ciba;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.oauth.ciba.common.CibaConstants;
 import org.wso2.carbon.identity.oauth.ciba.model.CibaAuthCodeResponse;
 import org.wso2.carbon.identity.oauth.ciba.wrappers.CibaAuthRequestWrapper;
@@ -115,5 +116,10 @@ public class CibaAuthzHandler {
             throw new CibaAuthFailureException(OAuth2ErrorCodes.SERVER_ERROR,
                     "Error in making internal authorization call.", e);
         }
+    }
+
+    public AuthenticatedUser getAuthenticatedUser(CibaAuthCodeResponse cibaAuthCodeResponse) {
+
+        return AuthenticatedUser.createLocalAuthenticatedUserFromSubjectIdentifier(cibaAuthCodeResponse.getUserHint());
     }
 }
